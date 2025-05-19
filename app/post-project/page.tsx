@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,76 +24,47 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+
 export default function PostProjectPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     budget: "",
-    skills: [] as string[],
+    categoryId: "",
     dueDate: "",
-    category: "",
   });
+  const [categories, setCategories] = useState<any[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({
     title: "",
     description: "",
     budget: "",
-    skills: "",
+    categoryId: "",
     dueDate: "",
-    category: "",
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const categories = [
-    "Web Development",
-    "Mobile App Development",
-    "Graphic Design",
-    "Content Writing",
-    "SEO & Marketing",
-    "Photography",
-    "Video Editing",
-    "Data Analysis",
-  ];
+  useEffect(() => {
+    const fetchCategories = async () => {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*');
+      
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load categories",
+          variant: "destructive",
+        });
+        return;
+      }
 
-  const skillsList = [
-    "React",
-    "Node.js",
-    "Python",
-    "JavaScript",
-    "UI/UX Design",
-    "SEO",
-    "Content Strategy",
-    "Adobe Photoshop",
-    "Video Production",
-    "Data Visualization",
-  ];
+      setCategories(data);
+    };
 
-  const fadeInUp = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.5 },
-    },
-  };
-
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
-  };
-
-  const handleSkillToggle = (skill: string) => {
-    setFormData((prev) => {
-      const skills = prev.skills.includes(skill)
-        ? prev.skills.filter((s) => s !== skill)
-        : [...prev.skills, skill];
-      return { ...prev, skills };
-    });
-    setErrors((prev) => ({ ...prev, skills: "" }));
-  };
+    fetchCategories();
+  }, []);
 
   const validateForm = () => {
     let isValid = true;
@@ -101,9 +72,8 @@ export default function PostProjectPage() {
       title: "",
       description: "",
       budget: "",
-      skills: "",
+      categoryId: "",
       dueDate: "",
-      category: "",
     };
 
     if (!formData.title.trim()) {
@@ -114,24 +84,16 @@ export default function PostProjectPage() {
       newErrors.description = "Project description is required";
       isValid = false;
     }
-    if (
-      !formData.budget ||
-      isNaN(Number(formData.budget)) ||
-      Number(formData.budget) <= 0
-    ) {
+    if (!formData.budget || isNaN(Number(formData.budget)) || Number(formData.budget) <= 0) {
       newErrors.budget = "Valid budget amount is required";
       isValid = false;
     }
-    if (formData.skills.length === 0) {
-      newErrors.skills = "At least one skill is required";
+    if (!formData.categoryId) {
+      newErrors.categoryId = "Category is required";
       isValid = false;
     }
     if (!formData.dueDate) {
       newErrors.dueDate = "Due date is required";
-      isValid = false;
-    }
-    if (!formData.category) {
-      newErrors.category = "Category is required";
       isValid = false;
     }
 
@@ -144,62 +106,73 @@ export default function PostProjectPage() {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
-    try {
-      // Placeholder for API call
-      /*
-      const response = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formData.title,
-          description: formData.description,
-          budget: `$${formData.budget}`,
-          skills: formData.skills,
-          dueDate: formData.dueDate,
-          category: formData.category,
-          status: "open",
-          freelancer: null,
-        }),
-      });
-      if (!response.ok) throw new Error("Failed to post project");
-      */
-
-      // Simulate successful submission
+    
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
       toast({
-        title: "Success",
-        description: "Your project has been posted successfully!",
+        title: "Error",
+        description: "You must be logged in to post a project",
+        variant: "destructive",
       });
-      router.push("/dashboard");
-    } catch (error) {
+      setIsSubmitting(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('projects')
+      .insert({
+        title: formData.title,
+        description: formData.description,
+        budget: Number(formData.budget),
+        category_id: formData.categoryId,
+        due_date: formData.dueDate,
+        client_id: user.id,
+      });
+
+    setIsSubmitting(false);
+
+    if (error) {
       toast({
         title: "Error",
         description: "Failed to post project. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
+      return;
     }
+
+    toast({
+      title: "Success",
+      description: "Your project has been posted successfully!",
+    });
+    router.push("/dashboard");
+  };
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
   return (
     <div className="min-h-screen pt-24 pb-12">
       <div className="container mx-auto px-4">
         <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={fadeInUp}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
           <h1 className="text-3xl font-bold gradient-text accent-glow">
             Post a New Project
           </h1>
           <p className="text-muted-foreground">
-            Fill in the details to attract the right freelancers for your
-            project
+            Fill in the details to attract the right freelancers for your project
           </p>
         </motion.div>
 
-        <motion.div initial="hidden" animate="visible" variants={fadeInUp}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="border-border/50">
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -255,9 +228,7 @@ export default function PostProjectPage() {
                         placeholder="e.g., 2500"
                         value={formData.budget}
                         onChange={handleInputChange}
-                        className={`pl-9 ${
-                          errors.budget ? "border-red-500" : ""
-                        }`}
+                        className={`pl-9 ${errors.budget ? "border-red-500" : ""}`}
                       />
                     </div>
                     {errors.budget && (
@@ -275,9 +246,7 @@ export default function PostProjectPage() {
                         type="date"
                         value={formData.dueDate}
                         onChange={handleInputChange}
-                        className={`pl-9 ${
-                          errors.dueDate ? "border-red-500" : ""
-                        }`}
+                        className={`pl-9 ${errors.dueDate ? "border-red-500" : ""}`}
                         min={new Date().toISOString().split("T")[0]}
                       />
                     </div>
@@ -287,58 +256,30 @@ export default function PostProjectPage() {
                   </div>
                 </div>
 
-                <div className="space-y- DBMS2">
-                  <Label htmlFor="category">Category</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="categoryId">Category</Label>
                   <Select
-                    value={formData.category}
+                    value={formData.categoryId}
                     onValueChange={(value) =>
-                      setFormData((prev) => ({ ...prev, category: value }))
+                      setFormData((prev) => ({ ...prev, categoryId: value }))
                     }
                   >
                     <SelectTrigger
-                      id="category"
-                      className={errors.category ? "border-red-500" : ""}
+                      id="categoryId"
+                      className={errors.categoryId ? "border-red-500" : ""}
                     >
                       <SelectValue placeholder="Select a category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.category && (
-                    <p className="text-sm text-red-500">{errors.category}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Skills Required</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {skillsList.map((skill) => (
-                      <Button
-                        key={skill}
-                        type="button"
-                        variant={
-                          formData.skills.includes(skill)
-                            ? "default"
-                            : "outline"
-                        }
-                        className={`rounded-full text-sm ${
-                          formData.skills.includes(skill)
-                            ? "bg-accent-blue hover:bg-accent-blue/90"
-                            : ""
-                        }`}
-                        onClick={() => handleSkillToggle(skill)}
-                      >
-                        {skill}
-                      </Button>
-                    ))}
-                  </div>
-                  {errors.skills && (
-                    <p className="text-sm text-red-500">{errors.skills}</p>
+                  {errors.categoryId && (
+                    <p className="text-sm text-red-500">{errors.categoryId}</p>
                   )}
                 </div>
 
